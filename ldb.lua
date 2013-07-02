@@ -3,16 +3,16 @@
 **** Date		: 2013-07-01
 **** Desc		: this is a gdb-like debug tools for lua
 **** Usage  : 1.require("ldb")
-							2.ldb.ldb_open()  --you will pause here for set breakpoints
-							3.ldb.ldb()				--set breakpoint anywhere you want to pause
-							3.b/bd/be/bl      --add/disable/enable/list  the breakpoints
-							4.p/print         --print local or global variables
-							5.s/step					--step into a function
-							6.n/next					--step over a function
-							7.l/list					--list ten lines around the current line
-							8.f/file					--print the current file and line number
-							9.bt							--print traceback
-							10.c/cont					--continue
+              2.ldb.ldb_open()  --you will pause here for setting breakpoints
+              3.ldb.ldb()				--set breakpoint anywhere you want to pause
+              4.b/bd/be/bl      --add/disable/enable/list  the breakpoints
+              5.p/print         --print local or global variables
+              6.s/step					--step into a function
+              7.n/next					--step over a function
+              8.l/list					--list ten lines around the current line
+              9.f/file					--print the current file and line number
+              10.bt							--print traceback
+              11.c/cont					--continue
 *****************************************************************************]]
 module("ldb",package.seeall)
 dbcmd = {
@@ -55,11 +55,9 @@ function get_stack_depth()
 	local depth = 0
 	for i=1,#stack_lines do
         if string.find(stack_lines[i],dbcmd.script_name) == nil then
-            --print("getd----"..stack_lines[i].."   "..dbcmd.script_name)
 			depth = depth + 1
 		end
 	end
-    --print("get_stack_depth="..depth)
 	return depth
 end
 function print_var(name,value,level)
@@ -119,33 +117,6 @@ function print_expr(expr)
 			end
 		end
 	end
-	--[[
-	local dotindex = string.find(expr,"%.")
-	if dotindex then
-		local n1 = string.sub(expr,0,dotindex-1)
-		local v1 = 
-	end
-	local index = 1
---找局部变量
-	while true do
-		local name, value = debug.getlocal( 4, index )
-		if not name then break end
-		index = index + 1
-
-		if name == expr then
-			print_var( expr, value, 0 )
-			return
-		end
-	end
-
---找全局变量
-	if _G[expr] ~= nil then
-		print_var( expr, _G[expr], 0 )
-		return
-	end
-
-	print( expr .. " is invalid" )
-	--]]
 end
 
 function add_breakpoint(expr,env,bptype)
@@ -254,7 +225,6 @@ function execute_cmd(env)
 	io.write( "(ldb) " )
 	io.input(io.stdin)
 	local cmd = io.read("*line")
-	--print("cmd = "..cmd)
 	if cmd~="" then
 		dbcmd.last_cmd = cmd
 	else
@@ -268,33 +238,22 @@ function execute_cmd(env)
 	local i = string.find(cmd," ")
 	if i ~= nil then
 		c = string.sub(cmd,1,i-1)
-        --print("cmd="..cmd.." c="..c)
 		expr = string.sub(cmd,string.find(cmd," [%w/.]") + 1)
 	else
 		c = cmd
 		expr = ""
 	end
-	--print("c="..c.." expr="..expr)
 	if c == "c" or c == "cont" then
-		--print("execute:"..c.."--"..expr)
 		dbcmd.trace = false
 		return true
 	elseif c == "s" or c == "step" then
-		--print("execute:"..c.."--"..expr)
 		dbcmd.trace = true
 		return true
-	--elseif c == "u" or c == "up" then
-	--	dbcmd.status="up"
-	--	dbcmd.func = env.func
-	--	return true
 	elseif c == "p" or c == "print" then
-		--print("execute:"..c.."--"..expr)
 		print_expr(expr)
 	elseif c == "b" or c == "break" then
-		--print("execute:"..c.."--"..expr)
 		add_breakpoint(expr,env)
 	elseif c == "bt" then
-		--print("execute:"..c.."--"..expr)
 		print(debug.traceback("",3))
 	elseif c == "bl" or c == "breaklist" then
 		show_breakpoint()
@@ -324,7 +283,6 @@ function execute_cmd(env)
 end
 
 function print_file_lines(filename,cur_line)
-	--print("print_file_lines:"..filename.."  "..cur_line)
 	io.input(filename)
 	local line1 = math.max(cur_line - 5,1)
 	local line2 = cur_line +5
@@ -343,7 +301,6 @@ end
 
 
 function get_file_line(filename,line)
-	--print("get_file_line:"..filename..":"..line)
 	io.input(filename)
 	for i=1,line-1 do io.read("*line") end
 	local src = io.read("*line")
@@ -362,7 +319,6 @@ end
 function trace(event,line)
 	local env = debug.getinfo(2)
 	if get_bpfile(env.short_src)==dbcmd.script_name  then
-		--print("----------")
 		return
 	end
 
@@ -386,38 +342,14 @@ function trace(event,line)
     end
 
 	if dbcmd.trace then
-		--print("trace:"..line.."   "..env.short_src)
 		local fname = string.gsub(env.source,"@","")
 		local src = get_file_line(fname,line)
 		local funname = env.name or "unknown"
-		--print(string.format( "%s:%d(%s)  %s", env.short_src, line, funname, src ) )
 		print(line.."   |"..src)
 		while not execute_cmd(env) do end
-		--[[
-	elseif dbcmd.status == "up" and dbcmd.func ~= env.func then
-		print("trace:"..line.."   "..env.short_src)
-		local fname = string.gsub(env.source,"@","")
-		local src = get_file_line(fname,line)
-		local funname = env.name or "unknown"
-		--print(string.format( "%s:%d(%s)  %s", env.short_src, line, funname, src ) )
-		print(line.."   |"..src)
-		dbcmd.status = ""
-		while not execute_cmd(env) do end
---]]
 	end
 
 end
---[[
-function open_debug()
-	dbcmd.trace = true
-	debug.sethook(trace,"l")
-end
-
-function close_debug()
-	dbcmd.trace = false
-	debug.sethook()
-end
---]]
 function ldb_open()
 	dbcmd.trace = true
 	debug.sethook(trace,"l")
