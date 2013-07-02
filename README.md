@@ -4,7 +4,8 @@ ldb
 **** Author  	: tanjie(tanjiesymbol@gmail.com)  
 **** Date		: 2013-07-01  
 **** Desc		: this is a gdb-like debug tools for lua  
-**** Usage  : 1.require("ldb")  
+**** Usage  :   
+              1.require("ldb")  
               2.ldb.ldb_open()  --you will pause here for setting breakpoints  
               3.ldb.ldb()				--set breakpoint anywhere you want to pause  
               4.b/bd/be/bl      --add/disable/enable/list  the breakpoints  
