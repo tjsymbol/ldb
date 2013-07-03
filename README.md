@@ -14,4 +14,6 @@ ldb
               8.l/list					--list ten lines around the current line  
               9.f/file					--print the current file and line number  
               10.bt							--print traceback  
-              11.c/cont					--continue  
+              11.c/cont					--continue 
+	      12.set					--set the value of local or global  
+

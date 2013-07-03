@@ -13,6 +13,7 @@
               9.f/file					--print the current file and line number
               10.bt							--print traceback
               11.c/cont					--continue
+              12.set					--set the value local or global
 *****************************************************************************]]
 module("ldb",package.seeall)
 dbcmd = {
@@ -71,51 +72,89 @@ function print_var(name,value,level)
 		print(name .." = "..tostring(value))
 	end
 end
-
-function get_var(var)
+function str2var(varstr)
+	local str = "return "..varstr
+	return assert(loadstring(str))()
+end
+function get_local_or_global(var,new_value)
 	local index = 1
 	local val
 	while true do
-		local name,value = debug.getlocal(5,index)
+		local name,value = debug.getlocal(6,index)
 		if not name then break end
-		index = index + 1
 		if name == var then
+			if new_value ~=nil then
+				debug.setlocal(6,index,new_value)
+			end
 			return value
 		end
+		index = index + 1
 	end
 	if _G[var] ~= nil then
 		return _G[var]
 	end
 end
-
-function print_expr(expr)
+function get_var(expr,new_value)
 	local varlist = Split(expr,"%.")
-	local var = get_var(varlist[1])
+	local var = get_local_or_global(varlist[1])
 	if var == nil then
-		print( expr .. " is invalid" )
 		return
 	end
 	if #varlist == 1 then
-		print_var(expr,var)
-		return
+		if new_value ~= nil then
+			get_local_or_global(varlist[1],new_value)
+		end
+		return var
 	end
-	for k,v in pairs(varlist) do
-		if k >= 2 then
-			if var[v] == nil then
-				if tonumber(v) ~= nil and var[tonumber(v)] ~= nil then
-					var = var[tonumber(v)]
-				else
-					print( expr .. " is invalid" )
-					return
-				end
+	local last_var = var
+	for i=2,#varlist do
+		last_var = var
+		if var[varlist[i]] == nil then
+			if tonumber(varlist[i]) ~= nil and var[tonumber(varlist[i])] ~= nil then
+				var = var[tonumber(varlist[i])]
 			else
-				var = var[v]
-			end
-			if k == #varlist then
-				print_var(v,var)
 				return
 			end
+		else
+			var = var[varlist[i]]
 		end
+		if i == #varlist then
+			if new_value ~= nil then
+				last_var[varlist[i]] = new_value
+			end
+			return var
+		end
+	end
+end
+function set_expr(expr)
+	print("set expr="..expr)
+	local l = Split(expr,"=")
+	local si = string.find(expr,"=")
+	if si == nil then
+		print(expr .. "is not a valid set expression")
+		return
+	end
+
+	local varname = string.sub(expr,0,si-1)
+	local value = string.sub(expr,si+1)
+	varname = string.match(varname,"^%s*(.-)%s*$")
+	value = string.match(value,"^%s*(.-)%s*$")
+	local var = get_var(varname)
+	if var == nil then
+		print(expr .. "is not valid")
+	else
+		local v = str2var(value)
+		get_var(varname,v)
+	end
+end
+
+
+function print_expr(expr)
+	local var = get_var(expr)
+	if var == nil then
+		print(expr .. "is not valid!")
+	else
+		print_var(expr,var)
 	end
 end
 
@@ -224,7 +263,7 @@ end
 function execute_cmd(env)
 	io.write( "(ldb) " )
 	io.input(io.stdin)
-	local cmd = io.read("*line")
+	local cmd = string.match(io.read("*line"),"^%s*(.-)%s*$")
 	if cmd~="" then
 		dbcmd.last_cmd = cmd
 	else
@@ -264,8 +303,12 @@ function execute_cmd(env)
 	elseif c == "d" or c == "delete" then
 		del_breakpoint(expr)
 	elseif c == "l" or c == "list" then
-		local fname = string.gsub(env.source,"@","")
-		print_file_lines(fname,env.currentline)
+		local curfname = string.gsub(env.source,"@","")
+		if tonumber(expr) ~= nil then
+			print_file_lines(curfname,tonumber(expr))
+		else
+			print_file_lines(curfname,env.currentline)
+		end
 	elseif c == "f" or c == "file" then
 		print(env.short_src..":"..env.currentline)
 	elseif c == "n" or c == "next" then
@@ -273,6 +316,8 @@ function execute_cmd(env)
         dbcmd.status = "next"
 		dbcmd.trace = false
 		return true
+	elseif c == "set" then
+		set_expr(expr)
 	end
 
 
@@ -334,7 +379,6 @@ function trace(event,line)
 	end
     if dbcmd.status == "next" then
         local depth = get_stack_depth()
-        --print("depth="..depth.." stack_depth="..dbcmd.stack_depth)
         if depth <= dbcmd.stack_depth then
             dbcmd.trace = true
             dbcmd.status = ""
