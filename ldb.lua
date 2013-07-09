@@ -13,7 +13,9 @@
               9.f/file					--print the current file and line number
               10.bt							--print traceback
               11.c/cont					--continue
-              12.set					--set the value local or global
+              12.set						--set the value local or global
+              13.disp/display				--auto display variables on every command
+              14.undisp/undisplay   --delete auto display
 *****************************************************************************]]
 module("ldb",package.seeall)
 dbcmd = {
@@ -23,8 +25,9 @@ dbcmd = {
 	bps={},
 	max=0,
 	status="",
-	stack_depth = 0;
-	script_name = "ldb.lua"
+	stack_depth = 0,
+	script_name = "ldb.lua",
+	display_list = {}
 }
 
 function Split(str, delim, maxNb)
@@ -38,7 +41,7 @@ function Split(str, delim, maxNb)
     local pat = "(.-)" .. delim .. "()"
     local nb = 0
     local lastPos
-    for part, pos in string.gfind(str, pat) do
+    for part, pos in string.gmatch(str, pat) do
         nb = nb + 1
         result[nb] = part
         lastPos = pos
@@ -267,7 +270,7 @@ function execute_cmd(env)
 	if cmd~="" then
 		dbcmd.last_cmd = cmd
 	else
-		cmd = dbcmd.cmd
+		cmd = dbcmd.last_cmd
 	end
 	local c = ""
 	local expr = ""
@@ -281,6 +284,11 @@ function execute_cmd(env)
 	else
 		c = cmd
 		expr = ""
+	end
+	if c ~= "p" and c ~= "print" then
+		for k,v in pairs(dbcmd.display_list) do
+			print_expr(v)
+		end
 	end
 	if c == "c" or c == "cont" then
 		dbcmd.trace = false
@@ -318,6 +326,14 @@ function execute_cmd(env)
 		return true
 	elseif c == "set" then
 		set_expr(expr)
+	elseif c == "disp" or c == "display" then
+		table.insert(dbcmd.display_list,expr)
+	elseif c == "undisp" or c == "undisplay" then
+		for i=1,#(dbcmd.display_list) do
+			if dbcmd.display_list[i] == expr then
+				table.remove(dbcmd.display_list,i)
+			end
+		end
 	end
 
 
