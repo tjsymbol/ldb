@@ -16,6 +16,7 @@
               12.set						--set the value local or global
               13.disp/display				--auto display variables on every command
               14.undisp/undisplay   --delete auto display
+              15.finish					-- Execute until selected stack frame returns.
 *****************************************************************************]]
 module("ldb",package.seeall)
 dbcmd = {
@@ -320,8 +321,13 @@ function execute_cmd(env)
 	elseif c == "f" or c == "file" then
 		print(env.short_src..":"..env.currentline)
 	elseif c == "n" or c == "next" then
-        dbcmd.stack_depth = get_stack_depth()
-        dbcmd.status = "next"
+    dbcmd.stack_depth = get_stack_depth()
+    dbcmd.status = "next"
+		dbcmd.trace = false
+		return true
+	elseif c == "finish" then
+		dbcmd.stack_depth = get_stack_depth()
+		dbcmd.status = "finish"
 		dbcmd.trace = false
 		return true
 	elseif c == "set" then
@@ -399,6 +405,13 @@ function trace(event,line)
             dbcmd.trace = true
             dbcmd.status = ""
         end
+    end
+    if dbcmd.status == "finish" then
+    	local depth = get_stack_depth()
+    	if depth < dbcmd.stack_depth then
+    		dbcmd.trace = true
+    		dbcmd.status = ""
+    	end
     end
 
 	if dbcmd.trace then
