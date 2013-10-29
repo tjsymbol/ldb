@@ -17,8 +17,33 @@
               13.disp/display				--auto display variables on every command
               14.undisp/undisplay   --delete auto display
               15.finish					-- Execute until selected stack frame returns.
+              16.info               --print all local/global/upvalue (info local/global/upvalue)
+              16.h/help             --print help information
 *****************************************************************************]]
 module("ldb",package.seeall)
+
+helps = {
+	b='b/break add a breakpoint with or without a condition. eg. "b main.lua:50 gt index 5" \nsupport 4 condition breakpoint:gt(greater)/lt(smaller)/eq(equal)/md(modified) \neg. "b main.lua:50 gt index 5"  /  "b main.lua:50 lt index 5"  /"b main.lua:50 eq index 5" /"b main.lua:50 md index"',
+	bl = 'bl list all breakpoint',
+	be = 'be  enable a breakpoint',
+	bd = 'bd  disable a breakpoint',
+	d  = 'd/delete  delete a breakpoint',
+	p= 'p/print print the value of a  specific local or global or upvalue',
+	s = 's/step  step into a funciton',
+	n = 'n/next  step over a line of code',
+	l = 'l/list  list ten lines around current line',
+	f = 'f/file  print current file and line number',
+	bt = 'print traceback',
+	c = 'c/cont  continue',
+	set = 'set  set the value of local or global or upvalue',
+	disp = 'disp/display  auto display variables on every command',
+	finish = 'finish Execute until selected stack frame returns',
+	info = 'info print all local/global/upvalue (info local/global/upvalue)',
+	load = 'load execute a line of lua code',
+	h = 'h/help show help information',
+}
+
+
 dbcmd = {
 	next=false,
 	trace=false,
@@ -69,7 +94,7 @@ function print_var(name,value,level)
 	if type(value) == "table" then
 		print(name .." = { ")
 		for k,v in pairs(value) do
-			print(k.." = "..tostring(v).." ")
+			print(tostring(k).." = "..tostring(v).." ")
 		end
 		print("}")
 	else
@@ -80,15 +105,18 @@ function str2var(varstr)
 	local str = "return "..varstr
 	return assert(loadstring(str))()
 end
-function get_local_or_global(var,new_value)
+function get_local_or_global(var,level,new_value)
+	if not level then
+		level = 6
+	end
 	local index = 1
 	local val
 	while true do
-		local name,value = debug.getlocal(6,index)
+		local name,value = debug.getlocal(level,index)
 		if not name then break end
 		if name == var then
 			if new_value ~=nil then
-				debug.setlocal(6,index,new_value)
+				debug.setlocal(level,index,new_value)
 			end
 			return value
 		end
@@ -96,6 +124,19 @@ function get_local_or_global(var,new_value)
 	end
 	if _G[var] ~= nil then
 		return _G[var]
+	end
+	local func = debug.getinfo(level).func
+	local i = 1
+	while true do
+		local name,value = debug.getupvalue(func,i)
+		if not name then break end
+		if name == var then
+			if new_value ~=nil then
+				debug.setupvalue(func,i,new_value)
+			end
+			return value
+		end
+		i = i + 1
 	end
 end
 function get_var(expr,new_value)
@@ -106,7 +147,7 @@ function get_var(expr,new_value)
 	end
 	if #varlist == 1 then
 		if new_value ~= nil then
-			get_local_or_global(varlist[1],new_value)
+			get_local_or_global(varlist[1],6,new_value)
 		end
 		return var
 	end
@@ -145,7 +186,7 @@ function set_expr(expr)
 	value = string.match(value,"^%s*(.-)%s*$")
 	local var = get_var(varname)
 	if var == nil then
-		print(expr .. "is not valid")
+		print(expr .. " is not valid")
 	else
 		local v = str2var(value)
 		get_var(varname,v)
@@ -156,26 +197,38 @@ end
 function print_expr(expr)
 	local var = get_var(expr)
 	if var == nil then
-		print(expr .. "is not valid!")
+		print(expr .. " is not valid!")
 	else
 		print_var(expr,var)
 	end
 end
 
 function add_breakpoint(expr,env,bptype)
-	local si = string.find( expr, ":" )
+	local cond = ''
+	local bp = ''
+	local i = string.find(expr," ")
+	if i ~= nil then
+		bp = string.sub(expr,1,i-1)
+		cond = string.sub(expr,string.find(expr," [%w/.]") + 1)
+	else
+		bp = expr
+		cond = ""
+	end
+
+	local si = string.find( bp, ":" )
 	local source = ""
 	local line = ""
 	if nil == si then
-		line = tonumber(expr)
+		line = tonumber(bp)
 		if nil == line then
-			print( "add breakpoint error, expr (" .. expr .. ") invalid" )
+			print( "add breakpoint error, bp (" .. bp .. ") invalid" )
 		end
+		
 		source = get_bpfile(env.short_src)
 	else
-		line = string.sub( expr, si + 1 )
+		line = string.sub( bp, si + 1 )
 		line = tonumber( line )
-		source = get_bpfile(string.sub( expr, 1, si - 1 ))
+		source = get_bpfile(string.sub( bp, 1, si - 1 ))
 		if ( dbcmd.bps[line] ~= nil ) and ( dbcmd.bps[line][source] ~= nil ) then
 			print( string.format( "breakpoint %s:%d existed", source, line ) )
 			return
@@ -187,9 +240,43 @@ function add_breakpoint(expr,env,bptype)
 	tbl.active = true
 	tbl.bptype = bptype or "normal"
 	tbl.number = dbcmd.max + 1
+	if cond ~= '' then
+		local cl = Split(cond,"%s")
+		tbl.cond_operator = cl[1]
+		if tbl.cond_operator ~= 'gt' and tbl.cond_operator ~= 'lt' and tbl.cond_operator ~= 'eq' and tbl.cond_operator ~= 'md' then
+			print("breakpoint condition operator ("..tbl.cond_operator..") error! operator must be one of gt/lt/eq/md")
+			return
+		end
+		if tbl.cond_operator == 'md' then
+			if #cl ~= 2 then
+				print("breakpoint condition format error! the format: md operand")
+				return
+			end
+		else
+			if #cl ~= 3 then
+				print("breakpoint condition format error! the format: operator operand1 operand2")
+				return
+			end
+		end
+
+		tbl.cond_operand1 = cl[2]
+		if tbl.cond_operator == 'md' then
+			tbl.cond_operand2 = get_local_or_global(tbl.cond_operand1,3)
+			if not tbl.cond_operand2 then
+				print(tbl.cond_operand1 .." not exist!")
+				return
+			end
+		else
+			tbl.cond_operand2 = cl[3]
+		end
+	end
 
 	if dbcmd.bps[line] == nil then
-		dbcmd.bps[line] = {}
+		if line then
+			dbcmd.bps[line] = {}
+		else
+			return
+		end
 	end
 
 	dbcmd.bps[line][source] = tbl
@@ -262,6 +349,70 @@ function show_breakpoint()
 		end
 	end
 end
+
+function show_var(vartype)
+	if vartype == "local" then
+		print("local variables:")
+		local index = 1
+		while true do
+			local name,value = debug.getlocal(4,index)
+			if not name then break end
+			print_var(name,value)
+			index = index + 1
+		end
+	elseif vartype == "global" then
+		print("global variables:")
+		print_expr("_G")
+	elseif vartype == "upvalue" then
+		print("upvalue variables:")
+		local func = debug.getinfo(4).func
+		local i = 1
+		while true do
+			local name,value = debug.getupvalue(func,i)
+			if not name then break end
+			print_var(name,value)
+			i = i + 1
+		end
+	end
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function print_help(command)
+	if command then
+		if helps[command] then
+			print(helps[command])
+		else
+			print('no such command')
+			for k,v in pairs(helps) do
+				print(v)
+			end
+		end
+	else
+		for k,v in pairs(helps) do
+			print(v)
+		end
+	end
+end
+
+
 
 
 function execute_cmd(env)
@@ -340,6 +491,18 @@ function execute_cmd(env)
 				table.remove(dbcmd.display_list,i)
 			end
 		end
+	elseif c == "i" or c == 'info' then
+		show_var(expr)
+	elseif c == "o" or c == "load" then
+		print(expr)
+		local func = loadstring(expr)
+		if func then
+			func()
+		else
+			print('loadstring error! '..expr)
+		end
+	elseif c == 'h' or c == 'help' then
+		print_help(expr)
 	end
 
 
@@ -377,8 +540,12 @@ end
 function get_bpfile(filename)
 	local fname
 	fname = string.gsub(string.lower(filename),"\\","/")
-	for w in string.gmatch(fname,"([%w%d-_]+.lua)") do 
+	--for w in string.gmatch(fname,"([%w%d-_]+.lua)") do 
+	for w in string.gmatch(fname,"([%w%d-_.]+)") do 
 		fname = w
+	end
+	if not string.find(fname,"\.lua$") then
+		fname = fname .."\.lua"
 	end
 	return fname
 end
@@ -388,15 +555,48 @@ function trace(event,line)
 	if get_bpfile(env.short_src)==dbcmd.script_name  then
 		return
 	end
-
 	if ( not dbcmd.trace) and (dbcmd.bps[line] ~= nil) then
 		local tbl = dbcmd.bps[line][get_bpfile(env.short_src)]
 		if tbl~=nil and tbl.active then
-			dbcmd.trace = true
-			print("breakpoint:"..env.short_src..":"..line)
-			if tbl.bptype == "once" then
-				del_breakpoint(tbl.number)
+			local trace_flag = false
+			if tbl.cond_operator and tbl.cond_operator ~= '' then
+				print(tbl.cond_operator.." "..tbl.cond_operand1.." "..tbl.cond_operand2)
+				local op1_value = get_local_or_global(tbl.cond_operand1,3)
+				if op1_value == nil then
+					print("op1_value is nil")
+				else
+					local op2_value
+					if type(op1_value) == "string" then
+						op2_value = tostring(tbl.cond_operand2)
+					elseif type(op1_value) == "number" then
+						op2_value = tonumber(tbl.cond_operand2)
+					else
+						print("op1 type not string or number")
+					end
+					if tbl.cond_operator == "gt" and op1_value > op2_value then
+						trace_flag = true
+					end
+					if tbl.cond_operator == "lt" and op1_value < op2_value then
+						trace_flag = true
+					end
+					if tbl.cond_operator == "eq" and op1_value == op2_value then
+						trace_flag = true
+					end
+					if tbl.cond_operator == "md" and op1_value ~= op2_value then
+						trace_flag = true
+					end
+				end
+			else
+				trace_flag = true
 			end
+			print("trace_flag="..tostring(trace_flag))
+			if trace_flag == true then
+				dbcmd.trace = true
+				print("breakpoint:"..env.short_src..":"..line)
+			end			
+			--if tbl.bptype == "once" then
+			--	del_breakpoint(tbl.number)
+			--end
 		end
 	end
     if dbcmd.status == "next" then
